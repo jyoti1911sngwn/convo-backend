@@ -39,7 +39,7 @@ router.post("/uploadImage", upload.single("image"), async (req, res) => {
       // Update existing row
       const { data, error } = await supabase
         .from("images")
-        .update({ image_path: fileName })
+        .update({ image: fileName })
         .eq("user_id", userId)
         .select()
         .single();
@@ -49,7 +49,7 @@ router.post("/uploadImage", upload.single("image"), async (req, res) => {
       // Insert new row
       const { data, error } = await supabase
         .from("images")
-        .insert([{ user_id: userId, image_path: fileName }])
+        .insert([{ user_id: userId, image: fileName }])
         .select()
         .single();
       if (error) throw error;
@@ -70,18 +70,18 @@ router.get("/getImage/:userId", async (req, res) => {
 
     const { data: img, error } = await supabase
       .from("images")
-      .select("image_path")
+      .select("image")
       .eq("user_id", userId)
       .single();
 
-    if (error || !img?.image_path) {
+    if (error || !img?.image) {
       return res.status(404).json({ message: "Image not found" });
     }
 
     // Get public URL from Supabase bucket
     const { data: publicUrlData, error: urlError } = supabase.storage
       .from("profile-pictures")
-      .getPublicUrl(img.image_path);
+      .getPublicUrl(img.image);
 
     if (urlError) throw urlError;
 
