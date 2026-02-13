@@ -44,5 +44,31 @@ router.post("/uploadImage", upload.single("image"), async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+router.get("/getImage/:userId", async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    const { data: img, error } = await supabase
+      .from("images")
+      .select("image_path")
+      .eq("user_id", userId)
+      .single();
+
+    if (error || !img?.image_path) {
+      return res.status(404).json({ message: "Image not found" });
+    }
+
+    // Get public URL from Supabase bucket
+    const { data: publicUrl } = supabase.storage
+      .from("profile-pictures")
+      .getPublicUrl(img.image_path);
+
+    res.json({ imageUrl: publicUrl.publicUrl });
+  } catch (err) {
+    console.error("getImage error:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 
 export default router;
