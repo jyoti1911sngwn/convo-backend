@@ -32,7 +32,7 @@ router.post("/uploadImage", upload.single("image"), async (req, res) => {
     // Save file path in DB
     const { data: dbData, error: dbError } = await supabase
       .from("images")
-      .upsert({ user_id: userId, image_path: filePath })
+      .upsert({ user_id: userId, image: filePath })
       .select()
       .single();
 
