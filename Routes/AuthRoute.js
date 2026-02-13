@@ -21,7 +21,7 @@ router.post("/signup", async (req, res) => {
 
     const { data, error } = await supabase
       .from("users")
-      .insert([{ username, email, password_hash: hashedPassword , compare: hashedPassword}])
+      .insert([{ username, email, password_hash: hashedPassword }])
       .select();
 
     if (error) throw error;
