@@ -1,6 +1,7 @@
 import { Router } from "express";
 import multer from "multer";
 import { createClient } from "@supabase/supabase-js";
+import { randomUUID } from "crypto";
 
 const router = Router();
 const upload = multer();
@@ -9,58 +10,49 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-// Upload or update user image
+// Upload or update user image to Supabase bucket
 router.post("/uploadImage", upload.single("image"), async (req, res) => {
   try {
     const { userId } = req.body;
-    const buffer = req.file.buffer; // multer buffer
+    const file = req.file;
 
-    // Check if the user already has an image
-    const { data: existingImage, error: selectError } = await supabase
+    if (!file) return res.status(400).json({ error: "No file uploaded" });
+
+    const fileExt = file.originalname.split(".").pop();
+    const fileName = `${userId}-${randomUUID()}.${fileExt}`;
+    const filePath = `profile-pictures/${fileName}`;
+
+    // Upload to Supabase bucket
+    const { data, error: uploadError } = await supabase.storage
+      .from("profile-pictures")
+      .upload(filePath, file.buffer, { contentType: file.mimetype, upsert: true });
+
+    if (uploadError) throw uploadError;
+
+    // Save file path in DB
+    const { data: dbData, error: dbError } = await supabase
       .from("images")
-      .select("*")
-      .eq("user_id", userId)
+      .upsert({ user_id: userId, image_path: filePath })
+      .select()
       .single();
 
-    if (selectError && selectError.code !== "PGRST116") throw selectError;
+    if (dbError) throw dbError;
 
-    let result;
-    if (!existingImage) {
-      // Insert new image
-      const { data, error } = await supabase
-        .from("images")
-        .insert([{ user_id: userId, image: buffer }])
-        .select()
-        .single();
-      if (error) throw error;
-      result = data;
-    } else {
-      // Update existing image
-      const { data, error } = await supabase
-        .from("images")
-        .update({ image: buffer })
-        .eq("user_id", userId)
-        .select()
-        .single();
-      if (error) throw error;
-      result = data;
-    }
-
-    res.json(result);
+    res.json(dbData);
   } catch (err) {
     console.error("uploadImage error:", err.message);
     res.status(500).json({ error: err.message });
   }
 });
 
-// Get image by userId
+// Get image URL by userId
 router.get("/getImage/:userId", async (req, res) => {
   try {
     const { userId } = req.params;
 
     const { data: img, error } = await supabase
       .from("images")
-      .select("image")
+      .select("image_path")
       .eq("user_id", userId)
       .single();
 
@@ -71,13 +63,14 @@ router.get("/getImage/:userId", async (req, res) => {
       throw error;
     }
 
-    if (!img?.image) return res.status(404).json({ message: "Image not found" });
+    if (!img?.image_path) return res.status(404).json({ message: "Image not found" });
 
-    const base64 = Buffer.from(img.image).toString("base64");
+    // Get public URL from bucket
+    const { data: publicUrlData } = supabase.storage
+      .from("profile-pictures")
+      .getPublicUrl(img.image_path);
 
-    res.json({
-      imageBase64: `data:image/jpeg;base64,${base64}`,
-    });
+    res.json({ imageUrl: publicUrlData.publicUrl });
   } catch (err) {
     console.error("getImage error:", err.message);
     res.status(500).json({ error: err.message });
