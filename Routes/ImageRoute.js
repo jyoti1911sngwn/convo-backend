@@ -52,15 +52,15 @@ router.get("/getImage/:userId", async (req, res) => {
     const { userId } = req.params;
     const { data: img, error } = await supabase
       .from("images")
-      .select("image_path")
+      .select("image")
       .eq("user_id", userId)
       .single();
 
-    if (error || !img?.image_path) return res.status(404).json({ message: "Image not found" });
+    if (error || !img?.image) return res.status(404).json({ message: "Image not found" });
 
     const { data: publicUrlData } = supabase.storage
       .from("profile-pictures")
-      .getPublicUrl(img.image_path);
+      .getPublicUrl(img.image);
 
     res.json({ imageUrl: publicUrlData.publicUrl });
   } catch (err) {
