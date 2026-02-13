@@ -9,6 +9,7 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
+// Upload or update user image
 router.post("/uploadImage", upload.single("image"), async (req, res) => {
   try {
     const { userId } = req.body;
@@ -20,55 +21,75 @@ router.post("/uploadImage", upload.single("image"), async (req, res) => {
     const fileName = `${userId}-${Date.now()}.png`;
 
     // Upload to Supabase Storage bucket
-    const { data, error } = await supabase.storage
+    const { data: uploadData, error: uploadError } = await supabase.storage
       .from("profile-pictures")
       .upload(fileName, file.buffer, { contentType: file.mimetype, upsert: true });
 
-    if (error) {
-      console.error("Upload error:", error);
-      return res.status(500).json({ error: error.message });
-    }
+    if (uploadError) throw uploadError;
 
-    // Store path in DB
-    const { data: inserted, error: dbError } = await supabase
+    // Check if user already has an image
+    const { data: existing, error: selectError } = await supabase
       .from("images")
-      .upsert({ user_id: userId, image: fileName })
-      .select()
+      .select("user_id")
+      .eq("user_id", userId)
       .single();
 
-    if (dbError) throw dbError;
+    let dbResult;
+    if (existing) {
+      // Update existing row
+      const { data, error } = await supabase
+        .from("images")
+        .update({ image: fileName })
+        .eq("user_id", userId)
+        .select()
+        .single();
+      if (error) throw error;
+      dbResult = data;
+    } else {
+      // Insert new row
+      const { data, error } = await supabase
+        .from("images")
+        .insert([{ user_id: userId, image: fileName }])
+        .select()
+        .single();
+      if (error) throw error;
+      dbResult = data;
+    }
 
-    res.json(inserted);
+    res.json(dbResult);
   } catch (err) {
-    console.error("uploadImage error:", err);
+    console.error("uploadImage error:", err.message);
     res.status(500).json({ error: err.message });
   }
 });
+
+// Get image by userId
 router.get("/getImage/:userId", async (req, res) => {
   try {
     const { userId } = req.params;
 
     const { data: img, error } = await supabase
       .from("images")
-      .select("image_path")
+      .select("image")
       .eq("user_id", userId)
       .single();
 
-    if (error || !img?.image_path) {
+    if (error || !img?.image) {
       return res.status(404).json({ message: "Image not found" });
     }
 
     // Get public URL from Supabase bucket
-    const { data: publicUrl } = supabase.storage
+    const { data: publicUrlData, error: urlError } = supabase.storage
       .from("profile-pictures")
-      .getPublicUrl(img.image_path);
+      .getPublicUrl(img.image);
 
-    res.json({ imageUrl: publicUrl.publicUrl });
+    if (urlError) throw urlError;
+
+    res.json({ imageUrl: publicUrlData.publicUrl });
   } catch (err) {
     console.error("getImage error:", err.message);
     res.status(500).json({ error: err.message });
   }
 });
-
 
 export default router;
