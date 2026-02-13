@@ -1,8 +1,9 @@
 import express from "express";
+import { Router } from "express";
 import bcrypt from "bcrypt";
 import dotenv from "dotenv";
 import { createClient } from "@supabase/supabase-js";
-
+const router = Router();
 dotenv.config();
 const app = express();
 app.use(express.json());
@@ -13,7 +14,7 @@ const supabase = createClient(
 );
 
 // Signup
-app.post("/signup", async (req, res) => {
+router.post("/signup", async (req, res) => {
   try {
     const { username, email, password } = req.body;
     const hashedPassword = await bcrypt.hash(password, 10);
@@ -32,7 +33,7 @@ app.post("/signup", async (req, res) => {
 });
 
 // Login
-app.post("/login", async (req, res) => {
+router.post("/login", async (req, res) => {
   try {
     const { email, password } = req.body;
 
