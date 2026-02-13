@@ -1,60 +1,86 @@
 import { Router } from "express";
-import pool from "../db.js";
 import multer from "multer";
+import { createClient } from "@supabase/supabase-js";
+
 const router = Router();
 const upload = multer();
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+);
 
-router.post("/uploadImage",upload.single("image"), async (req, res) => {
+// Upload or update user image
+router.post("/uploadImage", upload.single("image"), async (req, res) => {
   try {
     const { userId } = req.body;
-    const user = await pool.query(`SELECT * FROM images WHERE user_id = $1`, [
-      userId,
-    ]);
+    const buffer = req.file.buffer; // multer buffer
 
-    let img;
-    const buffer = req.file.buffer; // requires express-fileupload or multer
-    if (user.rows.length === 0) {
-      img = await pool.query(
-        `INSERT INTO images (user_id, image) VALUES($1, $2) RETURNING *`,
-        [userId, buffer],
-      );
+    // Check if the user already has an image
+    const { data: existingImage, error: selectError } = await supabase
+      .from("images")
+      .select("*")
+      .eq("user_id", userId)
+      .single();
+
+    if (selectError && selectError.code !== "PGRST116") throw selectError;
+
+    let result;
+    if (!existingImage) {
+      // Insert new image
+      const { data, error } = await supabase
+        .from("images")
+        .insert([{ user_id: userId, image: buffer }])
+        .select()
+        .single();
+      if (error) throw error;
+      result = data;
     } else {
-      img = await pool.query(
-        `UPDATE images SET image = $1 WHERE user_id = $2 RETURNING *`,
-        [buffer, userId],
-      );
+      // Update existing image
+      const { data, error } = await supabase
+        .from("images")
+        .update({ image: buffer })
+        .eq("user_id", userId)
+        .select()
+        .single();
+      if (error) throw error;
+      result = data;
     }
-    res.json(img.rows[0]);
-  } catch (e) {
-    console.error(e.message);
-    res.status(500).send("Server Error");
+
+    res.json(result);
+  } catch (err) {
+    console.error("uploadImage error:", err.message);
+    res.status(500).json({ error: err.message });
   }
 });
 
+// Get image by userId
 router.get("/getImage/:userId", async (req, res) => {
   try {
     const { userId } = req.params;
-    const img = await pool.query(
-      `SELECT image FROM images WHERE user_id = $1`,
-      [userId],
-    );
 
-    if (img.rows.length === 0) {
-      return res.status(404).json({ message: "Image not found" });
+    const { data: img, error } = await supabase
+      .from("images")
+      .select("image")
+      .eq("user_id", userId)
+      .single();
+
+    if (error) {
+      if (error.code === "PGRST116") {
+        return res.status(404).json({ message: "Image not found" });
+      }
+      throw error;
     }
-    const buffer = img.rows[0].image; 
 
-    const base64 = buffer.toString("base64");
+    if (!img?.image) return res.status(404).json({ message: "Image not found" });
 
-    const mimeType = "image/jpeg"; 
-
+    const base64 = Buffer.from(img.image).toString("base64");
 
     res.json({
-      imageBase64: `data:${mimeType};base64,${base64}`,
+      imageBase64: `data:image/jpeg;base64,${base64}`,
     });
-  } catch (e) {
-    console.error(e.message);
-    res.status(500).json({ error: "Server Error" });
+  } catch (err) {
+    console.error("getImage error:", err.message);
+    res.status(500).json({ error: err.message });
   }
 });
 

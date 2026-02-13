@@ -1,33 +1,49 @@
 import { Router } from "express";
-import pool from "../db.js";
+import { createClient } from "@supabase/supabase-js";
 
 const router = Router();
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+);
 
+// Create a new message
 router.post("/createMessage", async (req, res) => {
-  const { senderId, reciepientId, messageText } = req.body;
+  const { senderId, recipientId, messageText } = req.body;
   try {
-    const Message = await pool.query(
-      `INSERT INTO converstion (sender_id, recipient_id, message) VALUES ($1, $2, $3) RETURNING *`,
-      [senderId, reciepientId, messageText],
-    );
-    res.json(Message.rows[0]);
+    const { data: message, error } = await supabase
+      .from("converstion")
+      .insert([{ sender_id: senderId, recipient_id: recipientId, message: messageText }])
+      .select()
+      .single(); // returns the inserted row
+
+    if (error) throw error;
+
+    res.json(message);
   } catch (err) {
-    console.error(err.message);
-    res.status(500).send("Server Error");
+    console.error("createMessage error:", err.message);
+    res.status(500).json({ error: err.message });
   }
 });
 
+// Get messages between two users
 router.get("/getMessages/:userId/:recipientId", async (req, res) => {
   const { userId, recipientId } = req.params;
   try {
-    const message = await pool.query(
-      `SELECT * FROM converstion WHERE (sender_id = $1 AND recipient_id = $2) OR (sender_id = $2 AND recipient_id = $1) ORDER BY created_at ASC`,
-      [userId, recipientId],
-    );
-    res.json(message.rows);
+    const { data: messages, error } = await supabase
+      .from("converstion")
+      .select("*")
+      .or(
+        `and(sender_id.eq.${userId},recipient_id.eq.${recipientId}),and(sender_id.eq.${recipientId},recipient_id.eq.${userId})`
+      )
+      .order("created_at", { ascending: true }); // chronological order
+
+    if (error) throw error;
+
+    res.json(messages);
   } catch (err) {
-    console.error(err.message);
-    res.status(500).send("Server Error");
+    console.error("getMessages error:", err.message);
+    res.status(500).json({ error: err.message });
   }
 });
 
