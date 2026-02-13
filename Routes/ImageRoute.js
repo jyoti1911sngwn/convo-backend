@@ -46,35 +46,28 @@ router.post("/uploadImage", upload.single("image"), async (req, res) => {
 });
 
 // Get image URL by userId
+// backend/images.js
 router.get("/getImage/:userId", async (req, res) => {
   try {
     const { userId } = req.params;
-
     const { data: img, error } = await supabase
       .from("images")
       .select("image_path")
       .eq("user_id", userId)
       .single();
 
-    if (error) {
-      if (error.code === "PGRST116") {
-        return res.status(404).json({ message: "Image not found" });
-      }
-      throw error;
-    }
+    if (error || !img?.image_path) return res.status(404).json({ message: "Image not found" });
 
-    if (!img?.image_path) return res.status(404).json({ message: "Image not found" });
-
-    // Get public URL from bucket
     const { data: publicUrlData } = supabase.storage
       .from("profile-pictures")
       .getPublicUrl(img.image_path);
 
     res.json({ imageUrl: publicUrlData.publicUrl });
   } catch (err) {
-    console.error("getImage error:", err.message);
+    console.error(err.message);
     res.status(500).json({ error: err.message });
   }
 });
+
 
 export default router;
