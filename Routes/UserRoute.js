@@ -4,7 +4,7 @@ import { createClient } from "@supabase/supabase-js";
 const router = Router();
 const supabase = createClient(
   process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
+  process.env.SUPABASE_SERVICE_ROLE_KEY,
 );
 
 router.get("/getAllUser", async (req, res) => {
@@ -35,13 +35,17 @@ router.get("/getAllUser", async (req, res) => {
     const formatted = users.map((u) => {
       const userImage = images.find((img) => img.user_id === u.id);
       const latestMessage = messages.find(
-        (m) => m.sender_id === u.id || m.recipient_id === u.id
+        (m) => m.sender_id === u.id || m.recipient_id === u.id,
       );
 
       let image = null;
-      if (userImage?.image) {
-        const base64 = Buffer.from(userImage.image).toString("base64");
-        image = `data:image/jpeg;base64,${base64}`;
+      if (userImage?.image_path) {
+        // Get the public URL from Supabase bucket
+        const { data: publicUrlData } = supabase.storage
+          .from("profile-pictures")
+          .getPublicUrl(userImage.image_path);
+
+        image = publicUrlData?.publicUrl || null;
       }
 
       return {
