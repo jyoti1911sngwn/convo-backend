@@ -39,11 +39,11 @@ router.get("/getAllUser", async (req, res) => {
       );
 
       let image = null;
-      if (userImage?.image_path) {
+      if (userImage?.image) {
         // Get the public URL from Supabase bucket
         const { data: publicUrlData } = supabase.storage
           .from("profile-pictures")
-          .getPublicUrl(userImage.image_path);
+          .getPublicUrl(userImage.image);
 
         image = publicUrlData?.publicUrl || null;
       }
