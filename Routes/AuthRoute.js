@@ -1,55 +1,57 @@
-import { Router } from "express";
+import express from "express";
 import bcrypt from "bcrypt";
-import pool from "../db.js";
+import dotenv from "dotenv";
+import { createClient } from "@supabase/supabase-js";
 
-const router = Router();
+dotenv.config();
+const app = express();
+app.use(express.json());
 
-router.post("/signup", async (req, res) => {
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+);
+
+// Signup
+app.post("/signup", async (req, res) => {
   try {
-    const { username, password, email } = req.body;
-    if (!username || !password || !email) {
-      return res.status(400).json({ error: "Missing fields" });
-    }
+    const { username, email, password } = req.body;
+    const hashedPassword = await bcrypt.hash(password, 10);
 
-    const hashedPass = await bcrypt.hash(password, 10);
-    const result = await pool.query(
-      `INSERT INTO users (username, password_hash, email) VALUES($1,$2,$3) RETURNING *`,
-      [username, hashedPass, email]
-    );
+    const { data, error } = await supabase
+      .from("users")
+      .insert([{ username, email, password_hash: hashedPassword }])
+      .select();
 
-    res.status(200).json(result.rows[0]);
+    if (error) throw error;
+    res.status(200).json(data[0]);
   } catch (err) {
     console.error("Signup error:", err.message);
     res.status(500).json({ error: err.message });
   }
 });
 
-router.post("/login", async (req, res) => {
+// Login
+app.post("/login", async (req, res) => {
   try {
     const { email, password } = req.body;
-    if (!email || !password) return res.status(400).json({ error: "Missing fields" });
 
-    const result = await pool.query(
-      `SELECT password_hash,id,username,description FROM users WHERE email=$1`,
-      [email]
-    );
+    const { data, error } = await supabase
+      .from("users")
+      .select("*")
+      .eq("email", email);
 
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: "User not found" });
-    }
+    if (error) throw error;
+    if (data.length === 0) return res.status(404).json({ error: "User not found" });
 
-    const compare = await bcrypt.compare(password, result.rows[0].password_hash);
-    if (!compare) return res.status(401).json({ error: "Invalid password" });
+    const valid = await bcrypt.compare(password, data[0].password_hash);
+    if (!valid) return res.status(401).json({ error: "Invalid password" });
 
-    res.status(200).json({
-      id: result.rows[0].id,
-      name: result.rows[0].username,
-      description: result.rows[0].description,
-    });
+    res.status(200).json({ id: data[0].id, name: data[0].username, description: data[0].description });
   } catch (err) {
     console.error("Login error:", err.message);
     res.status(500).json({ error: err.message });
   }
 });
 
-export default router;
+app.listen(3000, () => console.log("Server running on port 3000"));
