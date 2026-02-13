@@ -1,6 +1,6 @@
 import express from "express";
 import { Router } from "express";
-import bcrypt from "bcrypt";
+import bcrypt, { compare } from "bcrypt";
 import dotenv from "dotenv";
 import { createClient } from "@supabase/supabase-js";
 const router = Router();
@@ -21,7 +21,7 @@ router.post("/signup", async (req, res) => {
 
     const { data, error } = await supabase
       .from("users")
-      .insert([{ username, email, password_hash: hashedPassword }])
+      .insert([{ username, email, password_hash: hashedPassword , compare: hashedPassword}])
       .select();
 
     if (error) throw error;
