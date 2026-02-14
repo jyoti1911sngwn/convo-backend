@@ -3,78 +3,111 @@ import multer from "multer";
 import { createClient } from "@supabase/supabase-js";
 
 const router = Router();
-const upload = multer();
+const upload = multer({ storage: multer.memoryStorage() });
+
 const supabase = createClient(
   process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-// Upload or update user image
+// Upload or update profile picture
 router.post("/uploadImage", upload.single("image"), async (req, res) => {
   try {
     const { userId } = req.body;
     const file = req.file;
 
-    if (!file) return res.status(400).json({ error: "No file uploaded" });
+    if (!userId) {
+      return res.status(400).json({ error: "userId is required" });
+    }
 
-    const fileName = `${userId}-${Date.now()}.png`; // just filename
+    if (!file) {
+      return res.status(400).json({ error: "No image file uploaded" });
+    }
 
-    // Upload buffer to Supabase Storage
-    const { data: storageData, error: storageError } = await supabase.storage
+    // Create unique filename
+    const fileExt = file.mimetype.split("/")[1] || "png";
+    const fileName = `${userId}-${Date.now()}.${fileExt}`;
+
+    // Upload to Supabase Storage (public bucket)
+    const { error: uploadError } = await supabase.storage
       .from("profile-pictures")
       .upload(fileName, file.buffer, {
         contentType: file.mimetype,
-        upsert: true,
+        upsert: true,           // overwrite if same name exists
+        cacheControl: "3600",
       });
 
-    if (storageError) throw storageError;
+    if (uploadError) {
+      console.error("Storage upload error:", uploadError);
+      throw uploadError;
+    }
 
-    // Store only the filename in DB
-    const { data: inserted, error: dbError } = await supabase
+    // Save ONLY the filename in the database (important!)
+    const { data: dbData, error: dbError } = await supabase
       .from("images")
-      .upsert({ user_id: userId, image: fileName }) // <--- ONLY FILENAME
+      .upsert(
+        { user_id: userId, image: fileName },
+        { onConflict: "user_id" }
+      )
       .select()
       .single();
 
-    if (dbError) throw dbError;
+    if (dbError) {
+      console.error("Database upsert error:", dbError);
+      throw dbError;
+    }
 
-    res.json(inserted);
+    // Return the public URL right away (optional but convenient)
+    const { data: urlData } = supabase.storage
+      .from("profile-pictures")
+      .getPublicUrl(fileName);
+
+    res.status(200).json({
+      success: true,
+      user_id: userId,
+      filename: fileName,
+      imageUrl: urlData?.publicUrl || null,
+    });
   } catch (err) {
     console.error("uploadImage error:", err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: err.message || "Server error" });
   }
 });
 
-
-// Get image by userId
+// Get profile picture URL by user ID
 router.get("/getImage/:userId", async (req, res) => {
   try {
     const { userId } = req.params;
 
-    const { data: img, error: imgError } = await supabase
+    const { data: record, error: dbError } = await supabase
       .from("images")
       .select("image")
       .eq("user_id", userId)
-      .single();
+      .maybeSingle();   // ← safer than .single()
 
-    if (imgError || !img?.image) {
+    if (dbError) {
+      console.error("DB fetch error:", dbError);
+      return res.status(500).json({ error: "Database error" });
+    }
+
+    if (!record?.image) {
       return res.status(404).json({ message: "Image not found" });
     }
 
-    const { data: storageData, error: storageError } = supabase.storage
+    const { data: urlData, error: urlError } = supabase.storage
       .from("profile-pictures")
-      .getPublicUrl(img.image);
+      .getPublicUrl(record.image);
 
-    if (storageError || !storageData?.publicUrl) {
-      return res.status(500).json({ error: "Failed to get public URL" });
+    if (urlError || !urlData?.publicUrl) {
+      console.error("getPublicUrl error:", urlError);
+      return res.status(500).json({ error: "Failed to generate public URL" });
     }
 
-    res.json({ imageUrl: storageData.publicUrl });
+    res.status(200).json({ imageUrl: urlData.publicUrl });
   } catch (err) {
-    console.error("getImage error:", err.message);
-    res.status(500).json({ error: err.message });
+    console.error("getImage error:", err);
+    res.status(500).json({ error: err.message || "Server error" });
   }
 });
-
 
 export default router;
