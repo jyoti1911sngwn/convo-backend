@@ -61,9 +61,10 @@ router.get("/getImage/:userId", async (req, res) => {
       return res.status(404).json({ message: "Image not found" });
     }
 
+    const sanitizedPath = img.image.replace(/\\/g, "");
     const { data: storageData, error: storageError } = supabase.storage
       .from("profile-pictures")
-      .getPublicUrl(img.image);
+      .getPublicUrl(sanitizedPath);
 
     if (storageError || !storageData?.publicUrl) {
       return res.status(500).json({ error: "Failed to get public URL" });
@@ -75,7 +76,5 @@ router.get("/getImage/:userId", async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
-
-
 
 export default router;
