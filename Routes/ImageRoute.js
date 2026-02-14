@@ -51,27 +51,31 @@ router.get("/getImage/:userId", async (req, res) => {
   try {
     const { userId } = req.params;
 
-    const { data: img, error } = await supabase
+    const { data: img, error: imgError } = await supabase
       .from("images")
-      .select("image")   // make sure column name matches your table
+      .select("image")
       .eq("user_id", userId)
       .single();
 
-    if (error || !img?.image) {
+    if (imgError || !img?.image) {
       return res.status(404).json({ message: "Image not found" });
     }
 
-    // Get public URL from Supabase bucket
-    const { publicUrl } = supabase.storage
+    const { data: storageData, error: storageError } = supabase.storage
       .from("profile-pictures")
       .getPublicUrl(img.image);
 
-    res.json({ imageUrl: publicUrl });
+    if (storageError || !storageData?.publicUrl) {
+      return res.status(500).json({ error: "Failed to get public URL" });
+    }
+
+    res.json({ imageUrl: storageData.publicUrl });
   } catch (err) {
     console.error("getImage error:", err.message);
     res.status(500).json({ error: err.message });
   }
 });
+
 
 
 export default router;
