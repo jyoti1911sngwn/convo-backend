@@ -17,10 +17,9 @@ router.post("/uploadImage", upload.single("image"), async (req, res) => {
 
     if (!file) return res.status(400).json({ error: "No file uploaded" });
 
-    // Generate unique file name
-    const fileName = `${userId}-${Date.now()}.png`;
+    const fileName = `${userId}-${Date.now()}.png`; // just filename
 
-    // Upload to Supabase Storage bucket
+    // Upload buffer to Supabase Storage
     const { data: storageData, error: storageError } = await supabase.storage
       .from("profile-pictures")
       .upload(fileName, file.buffer, {
@@ -30,10 +29,10 @@ router.post("/uploadImage", upload.single("image"), async (req, res) => {
 
     if (storageError) throw storageError;
 
-    // Store the **plain path string** in DB
+    // Store only the filename in DB
     const { data: inserted, error: dbError } = await supabase
       .from("images")
-      .upsert({ user_id: userId, image: fileName }) // <- store plain path
+      .upsert({ user_id: userId, image: fileName }) // <--- ONLY FILENAME
       .select()
       .single();
 
@@ -45,6 +44,7 @@ router.post("/uploadImage", upload.single("image"), async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
 
 // Get image by userId
 router.get("/getImage/:userId", async (req, res) => {
@@ -61,10 +61,9 @@ router.get("/getImage/:userId", async (req, res) => {
       return res.status(404).json({ message: "Image not found" });
     }
 
-    const sanitizedPath = img.image.replace(/\\/g, "");
     const { data: storageData, error: storageError } = supabase.storage
       .from("profile-pictures")
-      .getPublicUrl(sanitizedPath);
+      .getPublicUrl(img.image);
 
     if (storageError || !storageData?.publicUrl) {
       return res.status(500).json({ error: "Failed to get public URL" });
@@ -76,5 +75,6 @@ router.get("/getImage/:userId", async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
 
 export default router;
