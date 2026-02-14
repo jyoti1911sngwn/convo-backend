@@ -27,32 +27,38 @@ io.on("connection", (socket) => {
   // });
 
   socket.on("sendMessage", async (data) => {
-  const { senderId, recipientId, messageText } = data;
+    const { senderId, recipientId, messageText } = data;
 
-  try {
-    const { data: saved, error } = await supabase
-      .from("converstion") // ← also fix spelling: conversation
-      .insert([{ sender_id: senderId, recipient_id: recipientId, message: messageText }])
-      .select()
-      .single();
+    try {
+      const { data: saved, error } = await supabase
+        .from("converstion") // ← also fix spelling: conversation
+        .insert([
+          {
+            sender_id: senderId,
+            recipient_id: recipientId,
+            message: messageText,
+          },
+        ])
+        .select()
+        .single();
 
-    if (error) throw error;
+      if (error) throw error;
 
-    const messageToBroadcast = {
-      id: saved.id,
-      senderId: saved.sender_id,
-      recipientId: saved.recipient_id,
-      messageText: saved.message,
-      created_at: saved.created_at,
-    };
+      const messageToBroadcast = {
+        id: saved.id,
+        senderId: saved.sender_id,
+        recipientId: saved.recipient_id,
+        messageText: saved.message,
+        created_at: saved.created_at,
+      };
 
-    // Send to both parties with real DB data
-    io.to(senderId).emit("receiveMessage", messageToBroadcast);
-    io.to(recipientId).emit("receiveMessage", messageToBroadcast);
-  } catch (err) {
-    console.error("Failed to save & broadcast:", err);
-  }
-});
+      // Send to both parties with real DB data
+      io.to(senderId).emit("receiveMessage", messageToBroadcast);
+      io.to(recipientId).emit("receiveMessage", messageToBroadcast);
+    } catch (err) {
+      console.error("Failed to save & broadcast:", err);
+    }
+  });
 
   socket.on("disconnect", () => {
     console.log("User disconnected:", socket.id);
@@ -77,16 +83,14 @@ app.use("/api/messages", messageRoute);
 app.use("/api/users", usersRoute);
 app.use("/api/images", imageRoute);
 
-
-app.get('/test-db', async (req, res) => {
+app.get("/test-db", async (req, res) => {
   try {
-    const result = await pool.query('SELECT NOW()'); // simple test query
+    const result = await pool.query("SELECT NOW()"); // simple test query
     res.json({ success: true, time: result.rows[0] });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
 });
-
 
 import dotenv from "dotenv";
 dotenv.config();
@@ -95,11 +99,10 @@ import { createClient } from "@supabase/supabase-js";
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
+  process.env.SUPABASE_SERVICE_ROLE_KEY,
 );
 
 const { data } = await supabase.from("users").select("*");
-
 
 server.listen(PORT, (req, res) => {
   console.log(`listening on port ${PORT}`);
