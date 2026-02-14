@@ -74,39 +74,45 @@ router.post("/uploadImage", upload.single("image"), async (req, res) => {
   }
 });
 
-// Get profile picture URL by user ID
 router.get("/getImage/:userId", async (req, res) => {
   try {
     const { userId } = req.params;
+
+    // Validate UUID format (optional but good)
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(userId)) {
+      return res.status(400).json({ error: "Invalid userId format" });
+    }
 
     const { data: record, error: dbError } = await supabase
       .from("images")
       .select("image")
       .eq("user_id", userId)
-      .maybeSingle();   // ← safer than .single()
+      .maybeSingle();
 
     if (dbError) {
-      console.error("DB fetch error:", dbError);
-      return res.status(500).json({ error: "Database error" });
+      console.error("Supabase query failed:", dbError);
+      return res.status(500).json({
+        error: "Database query failed",
+        details: dbError.message,
+      });
     }
 
     if (!record?.image) {
       return res.status(404).json({ message: "Image not found" });
     }
 
-    const { data: urlData, error: urlError } = supabase.storage
+    const { data: urlData } = supabase.storage
       .from("profile-pictures")
       .getPublicUrl(record.image);
 
-    if (urlError || !urlData?.publicUrl) {
-      console.error("getPublicUrl error:", urlError);
+    if (!urlData?.publicUrl) {
       return res.status(500).json({ error: "Failed to generate public URL" });
     }
 
-    res.status(200).json({ imageUrl: urlData.publicUrl });
+    res.json({ imageUrl: urlData.publicUrl });
   } catch (err) {
-    console.error("getImage error:", err);
-    res.status(500).json({ error: err.message || "Server error" });
+    console.error("getImage crash:", err);
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 
