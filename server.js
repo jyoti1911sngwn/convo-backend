@@ -21,10 +21,38 @@ io.on("connection", (socket) => {
     socket.join(userId);
   });
 
-  socket.on("sendMessage", (message) => {
-    io.to(message.reciepientId).emit("receiveMessage", message);
-    io.to(message.senderId).emit("receiveMessage", message);
-  });
+  // socket.on("sendMessage", (message) => {
+  //   io.to(message.recipientId).emit("receiveMessage", message);
+  //   io.to(message.senderId).emit("receiveMessage", message);
+  // });
+
+  socket.on("sendMessage", async (data) => {
+  const { senderId, recipientId, messageText } = data;
+
+  try {
+    const { data: saved, error } = await supabase
+      .from("converstion") // ← also fix spelling: conversation
+      .insert([{ sender_id: senderId, recipient_id: recipientId, message: messageText }])
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    const messageToBroadcast = {
+      id: saved.id,
+      senderId: saved.sender_id,
+      recipientId: saved.recipient_id,
+      messageText: saved.message,
+      created_at: saved.created_at,
+    };
+
+    // Send to both parties with real DB data
+    io.to(senderId).emit("receiveMessage", messageToBroadcast);
+    io.to(recipientId).emit("receiveMessage", messageToBroadcast);
+  } catch (err) {
+    console.error("Failed to save & broadcast:", err);
+  }
+});
 
   socket.on("disconnect", () => {
     console.log("User disconnected:", socket.id);
